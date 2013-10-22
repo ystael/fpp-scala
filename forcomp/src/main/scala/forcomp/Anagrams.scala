@@ -33,10 +33,17 @@ object Anagrams {
    *  Note: the uppercase and lowercase version of the character are treated as the
    *  same character, and are represented as a lowercase character in the occurrence list.
    */
-  def wordOccurrences(w: Word): Occurrences = ???
+  def wordOccurrences(w: Word): Occurrences =
+    for ((c, cs) <- w.toLowerCase.toList.groupBy(c => c).toList.sortBy(_._1).toList) yield (c, cs.length)
 
   /** Converts a sentence into its character occurrence list. */
-  def sentenceOccurrences(s: Sentence): Occurrences = ???
+  def sentenceOccurrences(s: Sentence): Occurrences = {
+    def combine(o1: Occurrences, o2: Occurrences): Occurrences =
+      for ((c, cns) <- (o1 ++ o2).groupBy(_._1).toList.sortBy(_._1))
+        yield (c, cns.map(_._2).sum)
+    s.map(wordOccurrences).foldLeft(List[(Char, Int)]())(combine)
+  }
+
 
   /** The `dictionaryByOccurrences` is a `Map` from different occurrences to a sequence of all
    *  the words that have that occurrence count.
@@ -53,10 +60,18 @@ object Anagrams {
    *    List(('a', 1), ('e', 1), ('t', 1)) -> Seq("ate", "eat", "tea")
    *
    */
-  lazy val dictionaryByOccurrences: Map[Occurrences, List[Word]] = ???
+  lazy val dictionaryByOccurrences: Map[Occurrences, List[Word]] =
+    dictionary.foldLeft(Map[Occurrences, List[Word]]())((accum, w) => {
+      val wOc = wordOccurrences(w)
+      accum.get(wOc) match {
+        case Some(ws) => accum.updated(wOc, w::ws)
+        case None     => accum + Pair(wOc, List(w))
+      }
+    })
+    
 
   /** Returns all the anagrams of a given word. */
-  def wordAnagrams(word: Word): List[Word] = ???
+  def wordAnagrams(word: Word): List[Word] = dictionaryByOccurrences(wordOccurrences(word))
 
   /** Returns the list of all subsets of the occurrence list.
    *  This includes the occurrence itself, i.e. `List(('k', 1), ('o', 1))`
@@ -80,7 +95,11 @@ object Anagrams {
    *  Note that the order of the occurrence list subsets does not matter -- the subsets
    *  in the example above could have been displayed in some other order.
    */
-  def combinations(occurrences: Occurrences): List[Occurrences] = ???
+  def combinations(occurrences: Occurrences): List[Occurrences] = occurrences match {
+    case (c, n)::ps => combinations(ps) ++
+                         (for (m <- 1 to n; cs <- combinations(ps)) yield (c, m)::cs)
+    case Nil        => List(Nil)
+  }
 
   /** Subtracts occurrence list `y` from occurrence list `x`.
    * 
@@ -92,7 +111,18 @@ object Anagrams {
    *  Note: the resulting value is an occurrence - meaning it is sorted
    *  and has no zero-entries.
    */
-  def subtract(x: Occurrences, y: Occurrences): Occurrences = ???
+  def subtract(x: Occurrences, y: Occurrences): Occurrences = {
+    def loop(x: Occurrences, y: Occurrences, accum: Occurrences): Occurrences = y match {
+      case (yc, yn)::ys => x match {
+        case (xc, xn)::xs => if (xc == yc && xn == yn) loop(xs, ys, accum)
+                             else if (xc == yc)        loop(xs, ys, Pair(xc, xn - yn)::accum)
+                             else                      loop(xs, y,  Pair(xc, xn)::accum)
+        case Nil          => throw new IllegalArgumentException("y not a subset of x")
+      }
+      case Nil          => accum.reverse ++ x
+    }
+    loop(x, y, Nil)
+  }
 
   /** Returns a list of all anagram sentences of the given sentence.
    *  
@@ -134,6 +164,17 @@ object Anagrams {
    *
    *  Note: There is only one anagram of an empty sentence.
    */
-  def sentenceAnagrams(sentence: Sentence): List[Sentence] = ???
-
+  def sentenceAnagrams(sentence: Sentence): List[Sentence] = {
+    def occurrenceSentences(sOc: Occurrences): List[Sentence] = sOc match {
+      case Nil => List(Nil)
+      case _   => for (wOc <- combinations(sOc);
+                       w <- dictionaryByOccurrences.get(wOc) match {
+                              case Some(ws) => ws
+                              case None     => Nil
+                            };
+                       ss <- occurrenceSentences(subtract(sOc, wOc)))
+                    yield w::ss
+    }
+    occurrenceSentences(sentenceOccurrences(sentence))
+  }
 }
